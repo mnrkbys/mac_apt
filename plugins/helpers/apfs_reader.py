@@ -7,20 +7,23 @@
 
 '''
 
-from kaitaistruct import __version__ as ks_version, KaitaiStream, BytesIO
-import plugins.helpers.apfs as apfs
-import anytree
+import chunk
 import collections
 import logging
-import liblzfse
 import struct
 import zlib
-from anytree import Node, RenderTree
 from uuid import UUID
-from plugins.helpers.writer import DataType
-from plugins.helpers.common import *
+
+import anytree
+import liblzfse
+import plugins.helpers.apfs as apfs
+from anytree import Node, RenderTree
 from cryptography.hazmat.backends import default_backend
 from cryptography.hazmat.primitives.ciphers import Cipher, algorithms, modes
+from kaitaistruct import BytesIO, KaitaiStream
+from kaitaistruct import __version__ as ks_version
+from plugins.helpers.common import *
+from plugins.helpers.writer import DataType
 
 log = logging.getLogger('MAIN.HELPERS.APFS_READER')
 
@@ -2043,7 +2046,7 @@ class ApfsFileCompressed(ApfsFile):
                     log.debug("should not go here getChunkList()....")
         return ret_list
 
-    def _lzvn_decompress(self, compressed_stream, compressed_size, uncompressed_size):
+    def _lzvn_decompress(self, compressed_stream, compressed_size, uncompressed_size, chunk_offset=0):
         '''
             Adds Prefix and Postfix bytes as required by decompressor, 
             then decompresses and returns uncompressed bytes buffer
@@ -2071,6 +2074,15 @@ class ApfsFileCompressed(ApfsFile):
             return decompressed_stream
         except (MemoryError, liblzfse.error) as ex:
             log.error('lzvn error - could not decompress stream, returning nulls')
+            # filename = self.lzvn_info.chunk_offsets[0] + "_" + compressed_size + "_" + uncompressed_size + '.bin'
+            # print("chunk offset: {}".format(self.lzvn_info.chunk_offsets[0]))
+            filename = "{:016x}".format(chunk_offset) + "_" + str(compressed_size) + "_" + str(uncompressed_size) + '.bin'
+            print("chunk_offset: 0x{:016x}".format(chunk_offset))
+            print("compressed_size: {}".format(compressed_size))
+            print("uncompressed_size: {}".format(uncompressed_size))
+            print("compressed_stream: {}".format(compressed_stream))
+            with open(filename, 'wb') as f:
+                f.write(compressed_stream)
             #raise ValueError('lzvn decompression failed')
         return b'\x00'* uncompressed_size
 
@@ -2173,7 +2185,7 @@ class ApfsFileCompressed(ApfsFile):
                         if compressed_data[0] == 0x06:
                             decompressed += compressed_data[1:]
                         else:
-                            decompressed += self._lzvn_decompress(compressed_data, chunk_size, uncomp_offset_end - uncomp_offset_start)
+                            decompressed += self._lzvn_decompress(compressed_data, chunk_size, uncomp_offset_end - uncomp_offset_start, chunk_offset)
 
                 # got all decompressed data, now slice to required part
                 buffer_start = chunks_to_decompress[0][2]
